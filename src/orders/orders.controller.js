@@ -7,22 +7,53 @@ const orders = require(path.resolve("src/data/orders-data"));
 // Use this function to assigh ID's when necessary
 const nextId = require("../utils/nextId");
 
-// TODO: Implement the /orders handlers needed to make the tests pass
-function create(req, res){
-  try{
-    const { data } = req.body;
+function orderNotPending(req, res, next){
+  if(orders[res.locals.indexFound].status !== 'pending' ) return res.status(400).send({error: 'pending'});
+  next()
+}
+
+//returns response if the status is pending
+function statusValidation(req, res,next){ 
+    if(res.locals.data.status !== 'pending'){  
+      return res.status(400).send({error: 'status'});
+    } 
+  next();
+}
+
+function foundValidation(req, res,next){
+  res.locals.paramId = req.params.id;
+
+  //check if found
+  res.locals.indexFound = orders.findIndex(order=>order.id == res.locals.paramId );
+  if(res.locals.indexFound == -1) return res.status(404).send({error: res.locals.paramId});
+  next();
+}
+
+function validation(req, res,next){
+  res.locals.data = req.body.data;
+    
     //VALIDATION
-    const {deliverTo, mobileNumber, dishes } = data;
+    const {deliverTo, mobileNumber, dishes } = res.locals.data;
     if(!deliverTo || deliverTo === "") return res.status(400).send({error: "deliverTo "})
     if(!mobileNumber || mobileNumber === "") return res.status(400).send({error: "mobileNumber "})
     if(!Array.isArray(dishes)) return res.status(400).send({error: "dishes "})
     if(dishes.length == 0) return res.status(400).send({error: "dishes "})
-
+    //validate prices
     const found = dishes.find(dish=>dish.quantity === 0 || !Number.isInteger(dish.quantity));
     if(found) return res.status(400).send({error: "1 2 0 quantity"})
+    //validate id if it's sent 
+    if(res.locals.data.id){
+      if( res.locals.paramId !== res.locals.data.id) return res.status(400).json({error: "id "+res.locals.data.id});
+    }
+    next();
+}
+
+// TODO: Implement the /orders handlers needed to make the tests pass
+function create(req, res){
+  try{
+    
     //Retrieve id and push it
-    const id = nextId();
-    const newOrder = {id, ...data};
+    const newOrder = {id: nextId(), ...res.locals.data};
     orders.push(newOrder);
 
     return res.status(201).json({data: newOrder});
@@ -35,43 +66,14 @@ function create(req, res){
 
 function read(req, res){
   
-  const {id} = req.params;
-
-  res.locals.orderFound = orders.find(or=>or.id == id);
-  if(res.locals.orderFound) return res.status(200).json({data: res.locals.orderFound}); 
-  return res.status(404).json({error: "error"});
+  return res.status(200).json({data: orders[res.locals.indexFound]}); 
    
 }
 
 function update(req, res){
   try{
-    const {id} = req.params;
-    const {data} = req.body;
-
-
-    res.locals.indexFound = orders.findIndex(order=>order.id == id);
-
-    if(res.locals.indexFound == -1) return res.status(404).json({error: "error"});
-    //VALIDATION
-      
-    if(data.id){
-      if( id !== data.id) return res.status(400).json({error: "id "+data.id});
-    }
-    
-    if(!data.deliverTo || data.deliverTo == '') return res.status(400).json({error:"deliverTo"});
-    if(!data.mobileNumber || data.mobileNumber == '')return res.status(400).json({error:"mobileNumber"});
-    if(!data.dishes || data.dishes == '' || !Array.isArray(data.dishes)) return res.status(400).json({error:"dish"});
-    if(!data.status || data.status == '' || data.status == "invalid") return res.status(400).json({error:"status"});
-
-    let flag;
-    data.dishes.forEach(d => {
-        if(!d.quantity|| d.quantity == 0 || !Number.isInteger(d.quantity)) flag = true;
-    });
-
-    if(flag) return res.status(400).json({error: `quantity 1 0 2`})
-
     //updating
-    orders.splice(res.locals.indexFound, 1, { ...data, id});
+    orders.splice(res.locals.indexFound, 1, { ...res.locals.data, id: res.locals.paramId});
 
     return res.status(200).json({data: orders[res.locals.indexFound]});
   }catch(e){
@@ -82,14 +84,6 @@ function update(req, res){
 }
 
 function destroy(req, res){
-
-  const {id} = req.params;
-
-  //check if found
-  res.locals.indexFound = orders.findIndex(order=>order.id == id );
-  if(res.locals.indexFound == -1) return res.status(404).send({error: id});
-  //checking status of found
-  if(orders[res.locals.indexFound].status !== 'pending') return res.status(400).send({error: 'pending'});
 
   //delete record
   orders.splice(res.locals.indexFound, 1);
@@ -105,9 +99,9 @@ return res.status(200).send({data:orders});
 
 
 module.exports = {
-    create: create,
-    read,
-    update,
-    delete: destroy,
+    create: [validation, create],
+    read: [foundValidation, read],
+    update: [foundValidation, validation, statusValidation, update],
+    delete: [foundValidation, orderNotPending,destroy],
     list
 };
