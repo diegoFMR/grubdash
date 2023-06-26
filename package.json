@@ -17,7 +17,7 @@
     "start:dev": "nodemon src/server.js",
     "start:solution": "npm run -it docker:build && npm run docker:run",
     "test": "jest",
-    "e": "cls && jest orders-router.test.js",
+    "e": "cls && jest",
     "test:solution": "npm run docker:build && npm run docker:test",
     "test:watch": "jest --watch"
   },
